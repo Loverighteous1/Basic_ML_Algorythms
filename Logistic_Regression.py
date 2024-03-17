@@ -2,114 +2,183 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+class LogisticReg:
+    def __init__(self, x, y, lr, epochs):
+        self.x = x
+        self.y = y
+        self.lr = lr
+        self.epochs = epochs
+        self.param_set = None
+        self.losses = []
 
-
-
-class LogisticRegression:
-  '''
-  The logistic regression is used when we want separate input data into 2 classes, commonly known as binary classification problems.
-  With this class, the machine will learn with an output data called  binary target.
-  '''
-# Constructor
-  
-  def __init__(self,lr,n_epochs):
-    self.lr = lr
-    self.n_epochs = n_epochs
-    self.train_losses = []
-    self.w = None
-    self.weight = []
-
-# A column of one should be added to the features to enable the manipulation of the bias term 
-    
-  def add_ones(self, x):
-    return np.hstack((np.ones((x.shape[0],1)),x))
-    
-# The logistic function expression
-  def sigmoid(self, x):
-    z = x @ self.w
-    return np.divide( 1, 1 + np.exp(-z))
-
-# Negative log likelihood function or cross entropy loss
-  
-  def cross_entropy(self, x, y_true):
-    y_pred = self.sigmoid(x)
-    loss = (1/x.shape[0]) * (-np.sum((y_true*np.log(y_pred)+(1-y_true)*np.log(1-y_pred))))
-    return loss
-
-#This function will use the sigmoid function to compute the probalities
-  
-  def predict_proba(self,x):  
-    proba = self.sigmoid(x)
-    return proba
-
-  
-  def predict(self,x):
-    '''
-     Predict the binary ooutput based on the input.
-     Returns 1 if the probability is greater than or equal to 0.5 or 0 otherwise
-    '''
-    x = self.add_ones(x)
-    probas = self.predict_proba(x)
-    output = (probas >= .5).astype(int) #convert the probalities into 0 and 1 by using a treshold=0.5
-    return output
-
-# This fit method will be used to train the logistic regression on the given data 
-  
-  def fit(self,x,y):
-    x = self.add_ones(x)                    
-
-    #  Need of reshaping y
-    y_true =  y.reshape((-1, 1))        
-
-    # Initialize w to zeros vector >>> (x.shape[1])
-    self.w = np.zeros((x.shape[1],1))          
-
-    for epoch in range(self.n_epochs):
-      # make predictions
-      y_pred = self.predict_proba(x)          
-
-      #compute the gradient
-      grad = - np.divide(x.T @ (y_true - y_pred), x.shape[0])     
-
-      #update rule
-      self.w = self.w - self.lr * grad              
-
-      #Compute and append the training loss in a list
-      loss = self.cross_entropy(x, y_true)            
-      self.train_losses.append(loss)
-
-      if epoch%1000 == 0:
-        print(f'loss for epoch {epoch}  : {loss}')
-
-# To computes the accuracy 
+    def shuffle_data(self, X, y):
+        """Shuffles the data
+        Args:
+        X: input features of size - N x D
+        y: target vector of size - N x 1
         
-  def accuracy(self,y_true, y_pred):
-    '''It will evaluate the performance of the model
-    A high accuracy is indicating that the model is predicting well, while
-    a low accuracy is saying uncorrect prediction.
-    '''
-    y_true = y_true.reshape((-1, 1))
-    acc = np.mean(y_true == y_pred) * 100
-    return acc
+        Returns:
+        shuffled data
+        """
+        N, _ = X.shape
+        shuffled_idx = np.random.permutation(N)
+        return X[shuffled_idx], y[shuffled_idx]
+
+    def add_ones(self, x):
+        return np.hstack((np.ones((x.shape[0], 1)), x))
+    
+    def sigmoid(self, x):
+        if x.shape[1] != self.param_set.shape[0]:
+            x = self.add_ones(x)
+        z = x @ self.param_set
+        return 1/(1+np.exp(-z))
+    
+    def nll_criteria(self, y, y_pred): # aka cross entropy 
+        nll = -(1/y.shape[0]) * np.sum(y * np.log(y_pred) + (1 - y) *  np.log(1 - y_pred))
+        return nll
+        
+    def grad_loss(self, x, y):
+        return (-1/x.shape[0]) * x.T @ (y - self.sigmoid(x))
+
+    def batch_grad_desc(self):
+        x = self.add_ones(self.x)
+        self.param_set = np.zeros((x.shape[1], 1))
+        self.losses = []
+        for iteration in range(self.epochs):
+            y_pred = self.sigmoid(x)
+            loss = self.nll_criteria(self.y, y_pred)
+            grad = self.grad_loss(x, self.y)
+            # Upadate rule to find the "best" set of param (or weights)
+            self.param_set = self.param_set - self.lr * grad
+            self.losses.append(loss)
+            #print(self.losses)
+        plt.plot(self.losses)
+        plt.show()
+        #return self.param_set
+
+    def batch_grad_desc_mom(self, beta):
+        x = self.add_ones(self.x)
+        self.param_set = np.zeros((x.shape[1], 1))
+        self.losses = []
+        self.momentum = 0
+        for iteration in range(self.epochs):
+            y_pred = self.sigmoid(x)
+            loss = self.nll_criteria(self.y, y_pred)
+            grad = self.grad_loss(x, self.y)
+            self.momentum = beta * self.momentum + (1 - beta) * grad
+            # Upadate rule to find the "best" set of param (or weights)
+            self.param_set = self.param_set - self.lr * self.momentum
+            self.losses.append(loss)
+
+    def minibatch_GD(self, batch_size):
+        self.batch = batch_size
+        x = self.add_ones(self.x)
+        self.param_set = np.zeros((x.shape[1], 1))
+        self.losses = []
+        for iteration in range(self.epochs):
+            x , self.y = self.shuffle_data(x , self.y)
+            running_losses = 0
+            for batch in range(0, self.x.shape[0], self.batch):
+                batch_x = x[batch: batch + self.batch]
+                batch_y = self.y[batch: batch + self.batch]
+                y_pred = self.sigmoid(batch_x)
+                loss = self.nll_criteria(batch_y, y_pred)
+                grad = self.grad_loss(batch_x, batch_y)
+                # Upadate rule to find the "best" set of param (or weights)
+                self.param_set = self.param_set - self.lr * grad
+                running_losses += loss
+            self.losses.append(running_losses/self.x.shape[0])
+
+    def minibatch_GD_mom(self, batch_size, beta):
+        self.batch = batch_size
+        x = self.add_ones(self.x)
+        self.param_set = np.zeros((x.shape[1], 1))
+        self.losses = []
+        for iteration in range(self.epochs):
+            x , self.y = self.shuffle_data(x , self.y)
+            running_losses = 0
+            self.momentum = 0
+            for batch in range(0, self.x.shape[0], self.batch):
+                batch_x = x[batch: batch + self.batch]
+                batch_y = self.y[batch: batch + self.batch]
+                y_pred = self.sigmoid(batch_x)
+                loss = self.nll_criteria(batch_y, y_pred)
+                grad = self.grad_loss(batch_x, batch_y)
+                self.momentum = beta * self.momentum + (1 - beta) * grad
+                # Upadate rule to find the "best" set of param (or weights)
+                self.param_set = self.param_set - self.lr * self.momentum
+                running_losses += loss
+            self.losses.append(running_losses/x.shape[0])
+
+    
+    def stochastic_GD(self):
+        x = self.add_ones(self.x)
+        self.param_set = np.zeros((x.shape[1], 1))
+        self.losses = []
+        avg_loss = float('inf') # inf is infinity
+        tolerance = 0.0001
+        epoch = 0
+        while epoch < self.epochs and avg_loss:
+            x , self.y = self.shuffle_data(x , self.y)
+            running_losses = 0
+            for idx in range(0, x.shape[0]):
+                batch_x = x[idx].reshape(-1, x.shape[1])
+                batch_y = self.y[idx].reshape(-1, 1)
+                y_pred = self.sigmoid(batch_x)
+                loss = self.nll_criteria(batch_y, y_pred)
+                grad = self.grad_loss(batch_x, batch_y)
+                # Upadate rule to find the "best" set of param (or weights)
+                self.param_set = self.param_set - self.lr * grad
+                running_losses += loss
+            avg_loss = running_losses/self.x.shape[0]
+            self.losses.append(avg_loss)
+            epoch += 1
+
+    def stochastic_GD_mom(self, beta):
+        x = self.add_ones(self.x)
+        self.param_set = np.zeros((x.shape[1], 1))
+        self.losses = []
+        avg_loss = float('inf')
+        tolerance = 0.0001
+        epoch = 0
+        while epoch < self.epochs and avg_loss:
+            self.momentum = 0
+            x , self.y = self.shuffle_data(x , self.y)
+            running_losses = 0
+            for idx in range(0, x.shape[0]):
+                batch_x = x[idx].reshape(-1, x.shape[1])
+                batch_y = self.y[idx].reshape(-1, 1)
+                y_pred = self.sigmoid(batch_x)
+                loss = self.nll_criteria(batch_y, y_pred)
+                grad = self.grad_loss(batch_x, batch_y)
+                self.momentum = beta * self.momentum + (1 - beta) * grad
+                # Upadate rule to find the "best" set of param (or weights)
+                self.param_set = self.param_set - self.lr * self.momentum
+                running_losses += loss
+            avg_loss = running_losses/x.shape[0]
+            self.losses.append(avg_loss)
+            epoch += 1
 
 
-  def plot_decision_boundary(X, w, b,y_train):
-
-    # z = w1x1 + w2x2 + w0
-    # one can think of the decision boundary as the line x2=mx1+c
-    # Solving we find m and c
-    x1 = [X[:,0].min(), X[:,0].max()]
-    m = -w[1]/w[2]
-    c = -b/w[2]
-    x2 = m*x1 + c
-
-    # Plotting
-    fig = plt.figure(figsize=(10,8))
-    plt.scatter(X[:, 0], X[:, 1],c=y_train)
-    plt.scatter(X[:, 0], X[:, 1], c=y_train)
-    plt.xlim([-2, 3])
-    plt.ylim([0, 2.2])
-    plt.xlabel("feature 1")
-    plt.ylabel("feature 2")
-    plt.title('Decision Boundary')
-    plt.plot(x1, x2, 'y-') 
+    def fit(self, batch=None, momentum=0):
+        if batch is None:
+            if momentum == 0:
+                gd = self.batch_grad_desc()
+                #self.param_set = gd.param_set
+            else:
+                gd = self.batch_grad_desc_mom(momentum)
+                self.param_set = gd.param_set
+        elif batch > 1:
+            if momentum == 0:
+                gd = self.minibatch_GD(batch)
+                self.param_set = gd.param_set
+            else:
+                gd = self.minibatch_GD_mom(batch, momentum)
+                self.param_set = gd.param_set
+        else:
+            if momentum == 0:
+                gd = self.stochastic_GD()
+                self.param_set = gd.param_set
+            else:
+                gd = self.stochastic_GD_mom(momentum)
+                self.param_set = gd.param_set
